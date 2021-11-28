@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Implementing Hidden Markov Models</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_CHTML"></script>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>Implementing a Hidden Markov Model Toolkit</h1>
+
+<p>In this assignment, you will implement the main algorthms associated with
+  Hidden Markov Models,
+  and become comfortable with dynamic programming and expectation maximization.
+  You will also apply your HMM for part-of-speech tagging,
+  linguistic analysis, and decipherment.
+        </p>
+
+
+<p>All code is to be written in <a href="files/hmm.py">hmm.py</a>.
+  Functions with I/O essentials for interacting with the program are provided,
+  as well as headers for the methods you need to define.
+  Read and understand the provided code.
+</p>
+
+<p>Test your implementatons by following the directions under the
+  <span class="label label-primary">Verify</span> labels.
+</p>
+
+<p>
+You may work on the sections in any order
+as long as you complete the prerequisites, sketched in the dependency diagram below.
+(Sections b, c, d, and e are reliant on Section a,
+Section f is reliant on Section e,
+and Section g is reliant on all.)
+
+
+<table class="table table-bordered">
+  <tr>
+    <td class="text-center" colspan="4"><a href="#seca">a: read and write model</a></td>
+  </tr>
+  <tr>
+    <td class="text-center"><a href="#secb">b: supervised learning</a></td>
+    <td class="text-center"><a href="#secc">c: random generation</a></td>
+    <td class="text-center"><a href="#secd">d: viterbi</a></td>
+    <td class="text-center"><a href="#sece">e: forward & backward</a></td>
+  </tr>
+  <tr>
+<td></td>
+<td></td>
+<td></td>
+<td class="text-center"><a href="#secf">f: unsupervised learning</a></td>
+  </tr>
+  <tr>
+    <td class="text-center" colspan="4"><a href="#secg">g: experimentation</a></td>
+  </tr>
+</table>
+
+</p>
+
+<h3 id="seca">Section a: Load+Write the model files</h3>
+
+<h4>Models</h4>
+
+<p>We have provided the beginnings of a class called <code>HMM</code> to represent
+  a Hidden Markov Model, parametrized by transition and emission probabilities.
+</p>
+
+<p>HMM transition and emission parameters are specified in a pair of files,
+      like <a href="files/models/two_english.trans">models/two_english.trans</a>
+      and <a href="files/models/two_english.emit">models/two_english.emit</a>.
+      Each row of a <tt>.trans</tt> file is of the form
+
+<pre>
+fromstate tostate P(tostate|fromstate)</pre>
+
+<tt>#</tt> is a special state that denotes the start state.
+Nothing is emitted from the <tt>#</tt> state.
+</p>
+
+<p>
+Each row of a <tt>.emit</tt> file is of the form
+
+<pre>
+state output P(output|state)</pre>
+</p>
+
+<p>
+Write a method, <code>HMM.load</code>, to load the parameters
+from the model files.
+</p>
+
+<ul>
+<li>Note that some possible transitions or emissions may be omitted in the files.
+  These parameters should maintain a value of 0.
+  </li>
+
+<li>
+    Optionally, the probabilities may be left out when we don't know them,
+    as in <a href="files/models/two_armenian.trans">models/two_armenian.trans</a> and
+    <a href="files/models/two_armenian.emit">models/two_armenian.emit</a>.
+    If the model files don't specify the conditional probabilities, the constructor
+    should initialize them randomly.
+  </li>
+
+  </ul>
+
+    <p>Your constructor should take the basename of the file pair
+      (such as <tt>models/two_english</tt>) as an argument.
+    </p>
+
+    <p>Additionally, define the inverse method, <code>HMM.dump</code>,
+      which takes a basename of the output file pair and
+      writes the parameters of the model to the corresponding
+      <tt>.trans</tt> and <tt>.emit</tt> files.
+      For brevity, transition or emission probabilities that are 0 should not be written.
+    </p>
+
+<h4>Observations (no code needed)</h4>
+<p>Observations are represented in a <tt>.obs</tt>
+  file such as <a href="files/data/browntags.obs">data/browntags.obs</a>,
+   where each observation is a list of 2 lines in order:
+
+<pre>
+state1 state2 state3 ...
+output1 output2 output3 ...</pre>
+
+  The first line is the space-delimited state sequence,
+  and the second is the space-delimited output sequence.
+  The first line may be empty when the state sequence is unknown,
+  as in <a href="files/data/armenian.obs">data/armenian.obs</a>
+</p>
+
+<span class="label label-primary">Verify</span>
+<p>
+Create a model by loading from <tt>models/two_english</tt> and then writing it <tt>two_english_test</tt>, like so:
+</p>
+
+<code>
+<blockquote>
+model = HMM() <br>
+model.load(models/two_english)<br>
+model.dump(two_english_test)<br>
+</blockquote>
+</code>
+
+<p>
+Verify that <tt>models/two_english.emit</tt> and <tt>two_english_test.emit</tt> are identical
+(others than line ordering), as are <tt>models/two_english.trans</tt> and <tt>two_english_test.trans</tt>.
+</p>
+
+<p>We have provided a class called <code>Observation</code> to represent
+  each observation,
+  as well as a <code>load_observations</code> function to
+  load a list of observations from a file.
+  </p>
+
+<h3 id="secb">Section b: Supervised Learning</h3>
+
+<p>
+Define <code>HMM.learn_supervised</code> that takes a list of
+observations with known state sequences, such as the observations in <tt>data/browntags.obs</tt>,
+as well as booleans specifying whether
+the transition and emission paramaters should be "locked" (unchanged during training).
+The method should estimate the parameters of the HMM using maximum likelihood estimation.
+No smoothing is required.
+</p>
+
+<span class="label label-primary">Verify</span>
+
+<p>
+<pre>
+python hmm.py models/partofspeech sup data/browntags.obs</pre>
+
+  which estimates the model using the state and output sequences in
+<a href="files/data/browntags.obs">data/browntags.obs</a>
+(a portion of the <a href="https://en.wikipedia.org/wiki/Brown_Corpus">Brown corpus</a>).
+The program writes the trained model to <tt>models/partofspeech.browntags.trained{.emit, .trans}</tt>.
+This model should be identical to <tt>gold/partofspeech.browntags.trained{.emit, .trans}</tt>.
+</p>
+
+<p>Note: If you are skipping this section or leaving it for later,
+  copy over <tt>partofspeech.browntags.trained{.trans, .emit}</tt>
+  from the <a href="files/gold">gold</a> directory to the
+  <a href="files/models">models</a> directory,
+  since you will need them for the following sections.
+</p>
+
+</p>
+<h3 id="secc">Section c: Random Observation Generation</h3>
+<p>
+Define a method, <code>HMM.generate</code>, that takes an integer <tt>n</tt>,
+and returns a random observation of length <em>n</em>,
+generated by sampling from the HMM.
+</p>
+
+<p>
+    Test the output of this method for the part-of-speech model you learned in
+    <a href="#secb">section b</a> by running
+
+<pre>
+python hmm.py models/partofspeech.browntags.trained g generated.obs</pre>
+
+which writes 20 random observations generated by the HMM into <tt>generated.obs</tt>
+</p>
+
+<p>Here are two example observations generated by our run.
+  (Of course, due to randomness, yours will differ.)
+</p>
+
+<tt>
+DET ADJ . ADV ADJ VERB ADP DET ADJ NOUN VERB ADJ NOUN <br>
+  the semi-catatonic , quite several must of an western bridge cannot spectacular analyses<br>
+  DET NOUN ADP NOUN CONJ DET VERB DET NOUN NOUN NOUN ADP DET NOUN<br>
+  whose light for wall and the learned the hull postmaster trash in his peters<br>
+</tt>
+
+  <h3 id="secd">Section d: Viterbi Algorithm for the Best State Sequence</h3>
+
+<p>Define a method,
+<code>HMM.viterbi</code>, that implements the Viterbi algorithm to find the best state
+  sequence for the output sequence of a given observation.
+  The method should set the state sequence of the observation
+  to be this Viterbi state sequence.
+</p>
+
+<p> Your algorithm can break ties however it likes.
+  (In practice, HMM parameter values tend to differ enough that you won't run into many ties.)
+</p>
+
+<span class="label label-primary">Verify</span>
+<p>
+
+<pre>
+python hmm.py models/partofspeech.browntags.trained v data/ambiguous_sents.txt</pre>
+
+  This uses the HMM parameters in <tt>models/partofspeech.{trans,emit}</tt>
+  to compute the best sequence of part-of-speech tags
+  for each sentence in
+  <a href="files/data/ambiguous_sents.obs">data/ambiguous_sents.obs</a>,
+  and writes it to <tt>data/ambiguous_sents.tagged.obs</tt>.
+</p>
+
+<p>
+  Compare the output file to
+  <a href="files/gold/ambiguous_sents.tagged.obs">gold/ambiguous_sents.tagged.obs</a>.
+  They should be identical.
+</p>
+
+<h3 id="sece">Section e: Forward and Backward Algorithms</h3>
+
+<p>Define methods <code>HMM.forward</code> and
+<code>HMM.backward</code> to implement the forward and backward algorithms respectively.
+Both methods should take an output sequence, and
+return a data structure containing the values for \(\alpha_i(t)\)
+and \(\beta_i(t)\) respectively.
+  </p>
+
+  <p>Additionally, define <code>HMM.forward_probability</code>
+    and <code>HMM.backward_probability</code> which
+    return the probability of a given output sequence
+     using the values computed by the above methods.
+  </p>
+
+
+  <span class="label label-primary">Verify</span>
+
+<p>
+  <pre>
+python hmm.py models/partofspeech.browntags.trained f data/ambiguous_sents.obs</pre>
+
+     computes the total probability of each sentence in
+     <a href="files/data/ambiguous_sents.obs">data/ambiguous_sents.obs</a>
+    using <code>HMM.forward</code>,
+    and writes it to <tt>data/ambiguous_sents.forwardprob</tt>.
+  </p>
+
+  <p>
+    Similarly,
+
+    <pre>
+python hmm.py models/partofspeech b data/ambiguous_sents.obs</pre>
+
+       computes the total probability of each sentence
+      using <code>HMM.backward</code>,
+      and writes it to <tt>data/ambiguous_sents.backwardprob</tt>.
+</p>
+
+    The numbers in both these files should be the same,
+    and identical to
+    <a href="files/gold/ambiguous_sents.prob">gold/ambiguous_sents.prob</a>.
+    </p>
+
+<h3 id="secf">Section f: Unsupervised Learning with Baum Welch</h3>
+
+<p>Define <code>HMM.learn_unsupervised</code> that takes a list of
+  observations where the state sequences may be unknown,
+  a convergence threshold,
+  booleans specifying whether the transition and emission paramaters should be "locked",
+  and the number of random restarts.
+  This method should use the Baum Welch EM algorithm
+  (which draws upon <code>HMM.forward</code> and <code>HMM.backward</code>)
+  to estimate the model parameters,
+  starting from the current model.
+</p>
+
+<p>The function should also return the log likehood of the trained model.</p>
+
+<p>
+  If the number of restarts is greater than 0,
+  re-initialize the model with random values (keeping the locked parameters the same)
+  and run EM again.
+  Keep the model with the best log likelihood from all the restarts.
+</p>
+
+<span class="label label-primary">Verify</span>
+
+<p>
+<pre>
+python hmm.py models/two_english unsup data/english_words.obs</pre>
+
+which will print out the trained model's log likelihood
+
+<pre>The final model's log likelihood is -152860.669251
+</pre>
+
+The program will also write
+the trained model to <tt>models/two_english.english_words.trained{.emit,.trans}</tt>.
+</p>
+
+<p>
+Check them against <tt>gold/two_english.english_words.trained{.emit, .trans}</tt>.
+</p>
+
+<h3 id="secg">Section g: Experimentation and Analysis</h3>
+<p>You're done! Now on to play with your cool new toy.
+</p>
+
+<ul>
+  <li>(<a href="#secc">section c</a>)
+    Examine the sentences produced in <tt>generated.obs</tt>.
+    Ignore the state sequences (part of speech tags) and only look at the output sequences.
+    Are these reasonable English sentences?
+
+  <li>(<a href="#secd">section d</a>)
+    <a href="files/data/ambiguous_sents.obs">data/ambiguous_sents.obs</a>
+    contains some words with ambiguous parts of speech.
+The  Viterbi algorithm resolves some of the ambiguities correctly but not others.
+Which ones are incorrect?
+Looking at the <tt>partofspeech{.trans, .emit}</tt> HMM parameters, can you explain why?
+
+<small><a href="http://www.nltk.org/book/ch05.html#tab-universal-tagset">
+  [reference on part-of-speech tags]</a></small>
+
+<li>(<a href="#secf">section f</a>)
+  What did the <tt>models/two_english</tt> HMM learn when trained unsupervised
+  on the list of English words in Section f?
+
+  <li>(<a href="#secd">section d</a>, <a href="#secf">section f</a>)
+    <p>Run <code>hmm.py</code> with the appropriate command line arguments
+    to fit the <tt>models/two_armenian</tt> HMM on the list of
+    Armenian words provided in
+    <a href="files/data/armenian_words.obs">data/armenian_words.obs</a>,
+followed by Viterbi-tagging the data with the learned model.
+</p>
+<p>
+Did the program find a separation of vowels and consonants?
+(Keep in mind that the "C" and "V" names for the states are arbitrary;
+what's important is the separation.)
+Look online for information about Armenian characters.
+</p>
+<p>
+If the separation is not what you expect, and your code is correct,
+perhaps you got stuck in low local maximum.
+Re-run EM with restarts or a lower convergence threshold.
+</p>
+<p>Briefly describe your experiments and findings.</p>
+
+<li>(<a href="#secd">section d</a>, <a href="#secf">section f</a>)
+  <p>
+        The secret message in <a href="files/data/message.obs">data/message.obs</a>
+          has been encoded by translating
+  English characters into numbers.
+  Each number corresponds to a unique character, but the same character could map to multiple possible numbers.
+  Your task is to decode this message.
+</p>
+
+<p>
+  As per the noisy channel, we say that the message was
+  created by generating English characters with some language model probability, and then
+  encoding each English character into this secret language with some channel model probability.
+So, we're going to use English character bigrams, estimated from English text, as the HMM state transitions
+in <a href="files/models/encoding.trans">models/encoding.trans</a>.
+We will keep them locked because we're certain about them;
+by doing so, we only learn the emission (English-character state -> number) parameters.
+</p>
+
+<p>Run <code>hmm.py</code> with the appropriate command line arguments to learn
+  updated parameters for <tt>models/encoding{.trans,.emit}</tt>
+  and then decode the message.
+  As before, you may have to experiment with random restarts and varying the convergence threshold.
+  </p>
+
+</ul>
+
+</div>
+
+</body>
+</html>

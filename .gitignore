@@ -1,0 +1,8 @@
+.venv
+download
+.vscode
+其他学习
+data
+models
+verification
+__pycache__
