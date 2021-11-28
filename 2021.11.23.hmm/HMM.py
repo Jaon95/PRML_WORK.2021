@@ -515,10 +515,15 @@ class HMM:
         # TODO: fill in for section f
 
         train_model = []
-        for obs in corpus:
-            if len(obs.outputseq) <2 :
+
+        for i in corpus:
+            obs = i
+            if len(obs.outputseq) < 2 :
+                print(obs.outputseq)
+                print(obs)
                 print('序列长度小于2，不参与训练')
                 continue
+            
             # 获取α
             alpha = self.forward(obs)
             # 获取β
@@ -530,10 +535,11 @@ class HMM:
 
             # 下面计算π
             # 深拷贝
-            trans_dic = copy.deepcopy(self.transitions)
+            # trans_dic = copy.deepcopy(self.transitions)
             index  = [x for x in range(len(self.transitions['#']))]
-            for state_index,state in zip(index,self.transitions['#'].keys()):
-                trans_dic['#'][state] = gama[0,state_index]
+            # for state_index,state in zip(index,self.transitions['#'].keys()):
+            #     trans_dic['#'][state] = gama[0,state_index]
+            
             # 下面开始计算A矩阵
             # 下面 transition这个字典，转换为A矩阵
             A = self.A.values
@@ -542,15 +548,31 @@ class HMM:
             epsilon = [] # ε[t,i,j]
             for i in range(len(obs.outputseq)-1):
                 t = alpha[i,].reshape(-1,1)*A*B[obs.outputseq[i]].values.reshape(1,-1)*beta[i+1,].reshape(1,-1)
+                print(t)
                 epsilon.append(t)
             epsilon = np.array(epsilon)
+            # epsilon还要除以对应的时刻下面的所有的加和
+            episilon_t_sum = epsilon.sum(axis=(1,2)).reshape(-1,1,1)
+            # print('-----------epsilon_t_sum------------')
+            # print(episilon_t_sum)
+            epsilon = epsilon/episilon_t_sum
+
+            # print('-----------epsilon------------')
+            # print(epsilon)
+            # print(epsilon.shape)
+
 
             # ε[t,i,j]在t方向上求和
             epsilon_sum = epsilon.sum(axis=0)
-            # γ[t-1,i]在t方向上求和
+            # γ[t-1,i]在t方向上求和, 两者做除法可求出矩阵A
             gama_sum_t_1 = gama[:-1].sum(axis=0)
+            # print('---------------------episilon sum------------')
+            # print(epsilon_sum)
+            # print('----------------gama------------')
+            # print(gama_sum_t_1)
 
-            new_A = epsilon_sum/gama_sum_t_1
+
+            # new_A = epsilon_sum/gama_sum_t_1
 
             # # 计算新的a_ij
             # for state_i_index,state_i in zip(index,self.transitions['#'].keys()):
@@ -558,21 +580,24 @@ class HMM:
             #         ## print(epsilon[:,state_i_index,state_j_index].sum()/gama[:-1,state_i_index].sum())
             #         trans_dic[state_i][state_j] = epsilon[:,state_i_index,state_j_index].sum()/gama[:-1,state_i_index].sum()
             
-            emit_dic = copy.deepcopy(self.emissions)
+            
+            
             # γ在t方向上求和
+            # 求和后可作为bjk的分母
             gama_sum_t = gama.sum(axis=0)
             # 计算b_j_t，注意这里计算的是bjt,bjk还要通过求和来实现
             # b_j_t = gama/gama_sum_t
             # 找到重复值,找到在观测序列中，每个观测值的索引
-            output_index_dic = {}
 
+            output_index_dic = {}
             for k,index in zip(obs.outputseq,range(len(obs.outputseq))):
                 if k not in output_index_dic:
                     output_index_dic[k] = []
                 if k in obs.outputseq:
                     output_index_dic[k].append(index)
-
-            # 下面更新b_j_k,计算b矩阵当中的分子
+            
+            emit_dic = copy.deepcopy(self.emissions)
+            # 计算b矩阵当中的分子
             newB_num = []
             for state_j,state_index in zip(self.states,range(len(self.states))):
                 j_k_p = []
@@ -592,7 +617,6 @@ class HMM:
             # for output in self.outputs:
             #     if output not in output_index_dic.keys():
             #         trans_dic[]
-
             # emit_dic = copy.deepcopy(self.emissions)
             # # 计算新的b_j_k
             # for state_j_index,state_j in zip(index,self.transitions['#'].keys()):
@@ -608,6 +632,8 @@ class HMM:
             #             numerator += gama[i,state_j_index]
             #         emit_dic[state_j][output] = numerator/gama[:,state_j_index].sum()
             train_model.append([gama,[epsilon_sum,gama_sum_t_1],[newB_num,gama_sum_t]])
+            # print(epsilon_sum)
+            # print(gama_sum_t_1)
         
         # 下面计算tran_model中的值
         gama_sum  = np.zeros((1,len(self.states)))
@@ -618,16 +644,16 @@ class HMM:
         newB_num_sum = np.zeros((len(self.states),len(self.outputs)))
         gama_sum_t = np.zeros((1,len(self.states)))
         for i in range(len(train_model)):
-            gama_sum += train_model[i][0][0,]
-            print(epsilon_sum.shape)
-            print(train_model[i][1][0].shape)
-            print(epsilon_sum)
-            print(train_model[i][1][0])
-            epsilon_sum += train_model[i][1][0]
-            gama_sum_t_1 += train_model[i][1][1]
-            newB_num_sum += train_model[i][2][0]
-            gama_sum_t += train_model[i][2][1]
+            gama_sum = gama_sum +train_model[i][0][0,]
+            # print('episilon in model shape : ',train_model[i][1][0].shape)
+            # print('episilon sum in model shape : ',epsilon_sum.shape)
+            # print(train_model[i][1][0])
+            epsilon_sum = epsilon_sum+train_model[i][1][0]
+            gama_sum_t_1 = gama_sum_t_1 +train_model[i][1][1]
+            newB_num_sum = newB_num_sum +train_model[i][2][0]
+            gama_sum_t = gama_sum_t + train_model[i][2][1]
         
+        # print('episilon sum ',epsilon.shape)
         new_PI = gama_sum[0,]/len(corpus)
         new_A = epsilon_sum/gama_sum_t_1
         new_B = newB_num_sum/gama_sum_t.reshape(-1,1)
